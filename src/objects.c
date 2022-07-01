@@ -1155,6 +1155,9 @@ static void dns_connect(struct PgSocket *server)
 		int count = 1;
 		int n;
 
+		if (!server->pool->last_connect_failed && server->pool->db->host_strategy == LAST_SUCCESSFUL)
+			server->pool->rrcounter = server->pool->last_successful_rrcounter;
+
 		for (const char *p = db->host; *p; p++)
 			if (*p == ',')
 				count++;
@@ -1165,6 +1168,7 @@ static void dns_connect(struct PgSocket *server)
 				break;
 		Assert(host);
 
+		server->rrcounter = server->pool->rrcounter;
 		server->pool->rrcounter++;
 	} else {
 		host = db->host;
