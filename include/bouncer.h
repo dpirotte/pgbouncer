@@ -81,6 +81,11 @@ enum SSLMode {
 	SSLMODE_VERIFY_FULL
 };
 
+enum HostStrategy {
+	LAST_SUCCESSFUL,
+	ROUND_ROBIN
+};
+
 #define is_server_socket(sk) ((sk)->state >= SV_FREE)
 
 
@@ -289,6 +294,7 @@ struct PgPool {
 	bool welcome_msg_ready:1;
 
 	uint16_t rrcounter;		/* round-robin counter */
+	uint16_t last_successful_rrcounter;		/* last round-robin counter with a successful connection */
 };
 
 #define pool_connected_server_count(pool) ( \
@@ -349,6 +355,7 @@ struct PgDatabase {
 	int pool_mode;		/* pool mode for this database */
 	int max_db_connections;	/* max server connections between all pools */
 	char *connect_query;	/* startup commands to send to server after connect */
+	int host_strategy; /* strategy for host selection in a comma-separated host list */
 
 	struct PktBuf *startup_params; /* partial StartupMessage (without user) be sent to server */
 	const char *dbname;	/* server-side name, pointer to inside startup_msg */
@@ -446,6 +453,8 @@ struct PgSocket {
 	VarCache vars;		/* state of interesting server parameters */
 
 	SBuf sbuf;		/* stream buffer, must be last */
+
+	int16_t rrcounter; /* round-robin counter stored on pgsocket */
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)
@@ -559,6 +568,7 @@ extern char *cf_server_tls_key_file;
 extern char *cf_server_tls_ciphers;
 
 extern const struct CfLookup pool_mode_map[];
+extern const struct CfLookup host_strategy_map[];
 
 extern usec_t g_suspend_start;
 

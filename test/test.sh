@@ -1475,6 +1475,33 @@ test_host_list_dummy() {
 	return 0
 }
 
+# Test that the `last_successful` host strategy will attempt to connect to the last
+# host with a successful connection. In this case, that is the first host in the list.
+test_host_strategy_last_successful_good_first() {
+	psql -X -d hostlist_good_first -c 'select pg_sleep(1)' >/dev/null &
+	psql -X -d hostlist_good_first -c 'select 1'
+	psql -X -d hostlist_good_first -c 'select 2'
+
+	grep -F 'hostlist_good_first/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG || return 1
+	# We expect no connections to the bad host because the good host had a successful connection
+	grep -F 'hostlist_good_first/bouncer@127.0.0.2' $BOUNCER_LOG && return 1
+	return 0
+}
+
+# Test that the `last_successful` host strategy will attempt to connect to the last
+# host with a successful connection. In this case, that is the last host in the list.
+test_host_strategy_last_successful_bad_first() {
+	psql -X -d hostlist_bad_first -c 'select pg_sleep(1)' >/dev/null &
+	psql -X -d hostlist_bad_first -c 'select 1'
+	psql -X -d hostlist_bad_first -c 'select 2'
+
+	# We expect one failed connection to the bad host.
+	grep -F 'hostlist_bad_first/bouncer@127.0.0.2' $BOUNCER_LOG || return 1
+	# We expect two new connections to the good host.
+	grep -c -F 'hostlist_bad_first/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG | grep 2 || return 1
+	return 0
+}
+
 testlist="
 test_show_version
 test_help
@@ -1537,6 +1564,8 @@ test_cancel_wait
 test_cancel_pool_size
 test_host_list
 test_host_list_dummy
+test_host_strategy_last_successful_good_first
+test_host_strategy_last_successful_bad_first
 "
 
 if [ $# -gt 0 ]; then
