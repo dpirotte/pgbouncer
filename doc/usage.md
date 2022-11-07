@@ -425,6 +425,9 @@ maxwait_us
 pool_mode
 :   The pooling mode in use.
 
+host_strategy
+:   The host_strategy in use if the pool's host contains a comma-separated list.
+
 #### SHOW LISTS
 
 Show following internal information, in columns (not rows):
@@ -503,6 +506,9 @@ reserve_pool
 
 pool_mode
 :   The database's override pool_mode, or NULL if the default will be used instead.
+
+host_strategy
+:   The database's host_strategy if the host contains a comma-separated list.
 
 max_connections
 :   Maximum number of allowed connections for this database, as set by
