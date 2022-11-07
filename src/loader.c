@@ -296,6 +296,8 @@ bool parse_database(void *base, const char *name, const char *connstr)
 		} else if (!!connect_query != !!db->connect_query
 			   || (connect_query && strcmp(connect_query, db->connect_query) != 0))	{
 			changed = true;
+		} else if (host_strategy != db->host_strategy) {
+			changed = true;
 		}
 		if (changed)
 			tag_database_dirty(db);

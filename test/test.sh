@@ -1502,6 +1502,23 @@ test_host_strategy_last_successful_bad_first() {
 	return 0
 }
 
+test_host_strategy_updates_on_reload() {
+	cp $BOUNCER_INI $BOUNCER_INI.bak
+	sed '/^host_strategy_update =/s/host_strategy=last_successful/host_strategy=round_robin/g' $BOUNCER_INI > $BOUNCER_INI.new
+	mv $BOUNCER_INI.new $BOUNCER_INI
+	admin "reload"
+	cp $BOUNCER_INI.bak $BOUNCER_INI
+	rm $BOUNCER_INI.bak
+
+	admin "show databases"
+	admin "show databases" | grep -e "host_strategy_update.*round_robin" || return 1
+
+	psql -X -d host_strategy_update -c 'select 1' > /dev/null
+	admin "show pools"
+	admin "show pools" | grep -e "host_strategy_update.*round_robin" || return 1
+	return 0
+}
+
 testlist="
 test_show_version
 test_help
@@ -1566,6 +1583,7 @@ test_host_list
 test_host_list_dummy
 test_host_strategy_last_successful_good_first
 test_host_strategy_last_successful_bad_first
+test_host_strategy_updates_on_reload
 "
 
 if [ $# -gt 0 ]; then
