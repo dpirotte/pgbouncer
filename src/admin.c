@@ -492,18 +492,21 @@ static bool admin_show_databases(PgSocket *admin, const char *arg)
 	PktBuf *buf;
 	struct CfValue cv;
 	const char *pool_mode_str;
+  struct CfValue target_session_attrs_lookup;
+  const char *target_session_attrs_str;
 
 	cv.extra = pool_mode_map;
+  target_session_attrs_lookup.extra = target_session_attrs_map;
 	buf = pktbuf_dynamic(256);
 	if (!buf) {
 		admin_error(admin, "no mem");
 		return true;
 	}
 
-	pktbuf_write_RowDescription(buf, "ssissiiisiiii",
+	pktbuf_write_RowDescription(buf, "ssissiiissiiii",
 				    "name", "host", "port",
 				    "database", "force_user", "pool_size", "min_pool_size", "reserve_pool",
-				    "pool_mode", "max_connections", "current_connections", "paused", "disabled");
+				    "pool_mode", "target_session_attrs", "max_connections", "current_connections", "paused", "disabled");
 	statlist_for_each(item, &database_list) {
 		db = container_of(item, PgDatabase, head);
 
@@ -512,13 +515,20 @@ static bool admin_show_databases(PgSocket *admin, const char *arg)
 		cv.value_p = &db->pool_mode;
 		if (db->pool_mode != POOL_INHERIT)
 			pool_mode_str = cf_get_lookup(&cv);
-		pktbuf_write_DataRow(buf, "ssissiiisiiii",
+
+    target_session_attrs_str = NULL;
+    target_session_attrs_lookup.value_p = &db->target_session_attrs;
+    if (db->target_session_attrs != TARGET_SESSION_ANY)
+      target_session_attrs_str = cf_get_lookup(&target_session_attrs_lookup);
+
+		pktbuf_write_DataRow(buf, "ssissiiissiiii",
 				     db->name, db->host, db->port,
 				     db->dbname, f_user,
 				     db->pool_size >= 0 ? db->pool_size : cf_default_pool_size,
 				     db->min_pool_size >= 0 ? db->min_pool_size : cf_min_pool_size,
 				     db->res_pool_size >= 0 ? db->res_pool_size : cf_res_pool_size,
 				     pool_mode_str,
+             target_session_attrs_str,
 				     database_max_connections(db),
 				     db->connection_count,
 				     db->db_paused,
