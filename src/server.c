@@ -201,19 +201,17 @@ bool valid_target_session_attrs(PgSocket *server)
   VarCache *v = &server->vars;
   const struct PStr *in_hot_standby = v->var_list[VInHotStandby];
   const struct PStr *default_transaction_read_only = v->var_list[VDefaultTransactionReadOnly];
-  enum TargetSessionAttrs target_session_attrs = server->pool->db->target_session_attrs;
+  enum TargetSessionAttrs target = server->pool->db->target_session_attrs;
 
-  if (in_hot_standby &&
-      ((strcmp(in_hot_standby->str, "off") == 0 && target_session_attrs == TARGET_SESSION_READONLY) ||
-      (strcmp(in_hot_standby->str, "on") == 0 && target_session_attrs == TARGET_SESSION_READWRITE))) {
-    return false;
-  } else if (default_transaction_read_only &&
-      ((strcmp(default_transaction_read_only->str, "off") == 0 && target_session_attrs == TARGET_SESSION_STANDBY) ||
-      (strcmp(default_transaction_read_only->str, "on") == 0 && target_session_attrs == TARGET_SESSION_PRIMARY))) {
-    return false;
-  }
+  // If the server did not return the parameter, assume false.
+  bool hot_standby = in_hot_standby && strcmp(in_hot_standby->str, "on") == 0;
+  bool transaction_read_only = default_transaction_read_only && strcmp(default_transaction_read_only->str, "on") == 0;
 
-  return true;
+  return (target == TARGET_SESSION_ANY) ||
+    (target == TARGET_SESSION_READWRITE && !transaction_read_only) ||
+    (target == TARGET_SESSION_READONLY && transaction_read_only) ||
+    (target == TARGET_SESSION_PRIMARY && !hot_standby) ||
+    (target == TARGET_SESSION_STANDBY && hot_standby);
 }
 
 int pool_pool_mode(PgPool *pool)
