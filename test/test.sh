@@ -23,9 +23,14 @@ BOUNCER_ADMIN_HOST=/tmp
 LOGDIR=log
 PG_PORT=6666
 PG_LOG=$LOGDIR/pg.log
+PG_STANDBY_LOG=$LOGDIR/pg_standby.log
 
 pgctl() {
-	pg_ctl -w -o "-p $PG_PORT" -D $PGDATA $@ >>$PG_LOG 2>&1
+	pg_ctl -w -o "-h 127.0.0.1 -p $PG_PORT" -D $PGDATA $@ >>$PG_LOG 2>&1
+}
+
+pgctl_standby() {
+	pg_ctl -w -o "-h 127.0.0.2 -p $PG_PORT -k /tmp/pg_standby" -D $PGDATA-standby $@ >>$PG_STANDBY_LOG 2>&1
 }
 
 ulimit -c unlimited
@@ -72,6 +77,12 @@ if test $pg_majorversion -ge 10; then
 	pg_supports_scram=true
 else
 	pg_supports_scram=false
+fi
+
+if test $pg_majorversion -ge 14; then
+	pg_supports_target_session_attrs=true
+else
+	pg_supports_target_session_attrs=false
 fi
 
 if ! $use_unix_sockets; then
@@ -127,7 +138,7 @@ stopit pgdata/postmaster.pid
 
 mkdir -p $LOGDIR
 rm -f $BOUNCER_LOG $PG_LOG
-rm -rf $PGDATA
+rm -rf $PGDATA $PGDATA-standby
 
 if [ ! -d $PGDATA ]; then
 	mkdir $PGDATA
@@ -167,7 +178,9 @@ if [ ! -d $PGDATA ]; then
 	$local  all  all                trust
 	host   all  all  127.0.0.1/32  trust
 	host   all  all  ::1/128       trust
+	host	 replication replicator 127.0.0.1/32 trust
 	EOF
+
 fi
 
 pgctl start
@@ -202,6 +215,12 @@ psql -X -p $PG_PORT -d p0 -c "select * from pg_user" | grep pswcheck > /dev/null
 		psql -X -o /dev/null -p $PG_PORT -c "set password_encryption = on; create user puser2 password 'wrong';" p0 || exit 1
 	fi
 }
+
+if $pg_supports_target_session_attrs; then
+	psql -X -o /dev/null -p $PG_PORT -c "create user replicator replication" template1 || exit 1
+	pg_basebackup -U replicator -h 127.0.0.1 -p $PG_PORT -c fast -N -R -D $PGDATA-standby
+ 	pgctl_standby start
+fi
 
 #
 #  fw hacks
@@ -273,6 +292,7 @@ fw_reset() {
 complete() {
 	test -f $BOUNCER_PID && kill `cat $BOUNCER_PID` >/dev/null 2>&1
 	pgctl -m fast stop
+	pgctl_standby -m fast stop
 	rm -f $BOUNCER_PID
 	test -e test.ini.bak && mv test.ini.bak test.ini
 	test -e userlist.txt.bak && mv userlist.txt.bak userlist.txt
@@ -1496,7 +1516,7 @@ test_host_strategy_last_successful_bad_first() {
 	psql -X -d hostlist_bad_first -c 'select 2'
 
 	# We expect one failed connection to the bad host.
-	grep -F 'hostlist_bad_first/bouncer@127.0.0.2' $BOUNCER_LOG || return 1
+	grep -F 'hostlist_bad_first/bouncer@127.0.0.3' $BOUNCER_LOG || return 1
 	# We expect two new connections to the good host.
 	grep -c -F 'hostlist_bad_first/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG | grep 2 || return 1
 	return 0
@@ -1516,6 +1536,31 @@ test_host_strategy_updates_on_reload() {
 	psql -X -d host_strategy_update -c 'select 1' > /dev/null
 	admin "show pools"
 	admin "show pools" | grep -e "host_strategy_update.*round_robin" || return 1
+	return 0
+}
+
+test_target_session_primary() {
+	$pg_supports_target_session_attrs || return 77
+
+	psql -X -d primary_first -c "select 'primary first'"
+	grep -F 'primary_second/bouncer@127.0.0.2:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG && return 1
+
+	psql -X -d primary_second -c "select 'primary second'"
+	grep -F 'primary_second/bouncer@127.0.0.2:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG || return 1
+
+	psql -X -d primary_fail -c "select 'primary fail'"
+	grep -F 'primary_second/bouncer@127.0.0.2:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG || return 1
+	return 0
+}
+
+test_target_session_standby() {
+	$pg_supports_target_session_attrs || return 77
+
+	psql -X -d standby_first -c "select 'standby second'"
+	grep -F 'standby_second/bouncer@127.0.0.1:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG && return 1
+
+	psql -X -d standby_second -c "select 'standby second'"
+	grep -F 'standby_second/bouncer@127.0.0.1:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG || return 1
 	return 0
 }
 
@@ -1584,6 +1629,8 @@ test_host_list_dummy
 test_host_strategy_last_successful_good_first
 test_host_strategy_last_successful_bad_first
 test_host_strategy_updates_on_reload
+test_target_session_primary
+test_target_session_standby
 "
 
 if [ $# -gt 0 ]; then
