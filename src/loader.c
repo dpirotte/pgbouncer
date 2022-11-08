@@ -197,6 +197,8 @@ bool parse_database(void *base, const char *name, const char *connstr)
 	int dbname_ofs;
 	int pool_mode = POOL_INHERIT;
 	enum HostStrategy host_strategy = ROUND_ROBIN;
+	struct CfValue target_session_attrs_lookup;
+	enum TargetSessionAttrs target_session_attrs = TARGET_SESSION_ANY;
 
 	char *tmp_connstr;
 	const char *dbname = name;
@@ -214,6 +216,8 @@ bool parse_database(void *base, const char *name, const char *connstr)
 
 	cv.value_p = &pool_mode;
 	cv.extra = (const void *)pool_mode_map;
+	target_session_attrs_lookup.value_p = &target_session_attrs;
+	target_session_attrs_lookup.extra = (const void *)target_session_attrs_map;
 
 	host_strategy_lookup.value_p = &host_strategy;
 	host_strategy_lookup.extra = (const void *)host_strategy_map;
@@ -289,6 +293,11 @@ bool parse_database(void *base, const char *name, const char *connstr)
 				log_error("invalid pool mode: %s", val);
 				goto fail;
 			}
+		} else if (strcmp("target_session_attrs", key) == 0) {
+			if (!cf_set_lookup(&target_session_attrs_lookup, val)) {
+				log_error("invalid target_session_attrs: %s", val);
+				goto fail;
+			}
 		} else if (strcmp("connect_query", key) == 0) {
 			connect_query = strdup(val);
 			if (!connect_query) {
@@ -352,6 +361,7 @@ bool parse_database(void *base, const char *name, const char *connstr)
 	db->host_strategy = host_strategy;
 	free(db->connect_query);
 	db->connect_query = connect_query;
+	db->target_session_attrs = target_session_attrs;
 
 	if (!set_auth_dbname(db, auth_dbname))
 		goto fail;
