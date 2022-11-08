@@ -142,6 +142,11 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		break;
 
 	case 'Z':		/* ReadyForQuery */
+    if (!valid_target_session_attrs(server)) {
+			disconnect_server(server, true, "server does not satisfy target_session_attrs");
+      break;
+    }
+
 		if (server->exec_on_connect) {
 			server->exec_on_connect = false;
 			/* deliberately ignore transaction status */
@@ -189,6 +194,26 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 		sbuf_prepare_skip(sbuf, pkt->len);
 
 	return res;
+}
+
+bool valid_target_session_attrs(PgSocket *server)
+{
+  VarCache *v = &server->vars;
+  const struct PStr *in_hot_standby = v->var_list[VInHotStandby];
+  const struct PStr *default_transaction_read_only = v->var_list[VDefaultTransactionReadOnly];
+  enum TargetSessionAttrs target_session_attrs = server->pool->db->target_session_attrs;
+
+  if (in_hot_standby &&
+      ((strcmp(in_hot_standby->str, "off") == 0 && target_session_attrs == TARGET_SESSION_READONLY) ||
+      (strcmp(in_hot_standby->str, "on") == 0 && target_session_attrs == TARGET_SESSION_READWRITE))) {
+    return false;
+  } else if (default_transaction_read_only &&
+      ((strcmp(default_transaction_read_only->str, "off") == 0 && target_session_attrs == TARGET_SESSION_STANDBY) ||
+      (strcmp(default_transaction_read_only->str, "on") == 0 && target_session_attrs == TARGET_SESSION_PRIMARY))) {
+    return false;
+  }
+
+  return true;
 }
 
 int pool_pool_mode(PgPool *pool)
