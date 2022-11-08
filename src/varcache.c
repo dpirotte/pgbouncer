@@ -35,6 +35,8 @@ static const struct var_lookup lookup [] = {
  {"TimeZone",                    VTimeZone },
  {"standard_conforming_strings", VStdStr },
  {"application_name",            VAppName },
+ {"in_hot_standby",              VInHotStandby },
+ {"default_transaction_read_only", VDefaultTransactionReadOnly },
  {NULL},
 };
 
