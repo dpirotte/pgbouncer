@@ -28,6 +28,10 @@ pgctl() {
 	pg_ctl -w -o "-p $PG_PORT" -D $PGDATA $@ >>$PG_LOG 2>&1
 }
 
+pgctl_standby() {
+	pg_ctl -w -o "-p 6665" -D $PGDATA-standby $@ >>$PG_LOG 2>&1
+}
+
 ulimit -c unlimited
 
 command -v initdb > /dev/null || {
@@ -72,6 +76,12 @@ if test $pg_majorversion -ge 10; then
 	pg_supports_scram=true
 else
 	pg_supports_scram=false
+fi
+
+if test $pg_majorversion -ge 14; then
+	pg_supports_target_session_attrs=true
+else
+	pg_supports_target_session_attrs=false
 fi
 
 if ! $use_unix_sockets; then
@@ -127,7 +137,7 @@ stopit pgdata/postmaster.pid
 
 mkdir -p $LOGDIR
 rm -f $BOUNCER_LOG $PG_LOG
-rm -rf $PGDATA
+rm -rf $PGDATA $PGDATA-standby
 
 if [ ! -d $PGDATA ]; then
 	mkdir $PGDATA
@@ -168,6 +178,17 @@ if [ ! -d $PGDATA ]; then
 	host   all  all  127.0.0.1/32  trust
 	host   all  all  ::1/128       trust
 	EOF
+
+	if $pg_supports_target_session_attrs; then
+	  cp -a $PGDATA $PGDATA-standby
+
+cat >>$PGDATA-standby/postgresql.conf <<-EOF
+primary_conninfo = 'host=127.0.0.1 port=$PGPORT'
+hot_standby = on
+port = 6665
+EOF
+    pgctl_standby start
+  fi
 fi
 
 pgctl start
@@ -273,6 +294,7 @@ fw_reset() {
 complete() {
 	test -f $BOUNCER_PID && kill `cat $BOUNCER_PID` >/dev/null 2>&1
 	pgctl -m fast stop
+	pgctl_standby -m fast stop
 	rm -f $BOUNCER_PID
 	test -e test.ini.bak && mv test.ini.bak test.ini
 	test -e userlist.txt.bak && mv userlist.txt.bak userlist.txt
@@ -1507,6 +1529,18 @@ test_host_list_dummy() {
 	return 0
 }
 
+test_target_session_primary() {
+	psql -X -d primary_fail -c 'select 1'
+  return 0
+}
+
+test_target_session_standby() {
+  psql -X -d standby_success -c 'select * from pg_database'
+	psql -X -d standby_fail -c 'select 1'
+	grep -F 'standby_fail/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG || return 1
+  return 0
+}
+
 testlist="
 test_show_version
 test_help
@@ -1569,6 +1603,10 @@ test_cancel_wait
 test_cancel_pool_size
 test_host_list
 test_host_list_dummy
+test_target_session_primary
+test_target_session_standby
+test_target_session_readwrite
+test_target_session_readonly
 "
 
 if [ $# -gt 0 ]; then
