@@ -23,13 +23,14 @@ BOUNCER_ADMIN_HOST=/tmp
 LOGDIR=log
 PG_PORT=6666
 PG_LOG=$LOGDIR/pg.log
+PG_STANDBY_LOG=$LOGDIR/pg_standby.log
 
 pgctl() {
-	pg_ctl -w -o "-p $PG_PORT" -D $PGDATA $@ >>$PG_LOG 2>&1
+	pg_ctl -w -o "-h 127.0.0.1 -p $PG_PORT" -D $PGDATA $@ >>$PG_LOG 2>&1
 }
 
 pgctl_standby() {
-	pg_ctl -w -o "-p 6665" -D $PGDATA-standby $@ >>$PG_LOG 2>&1
+	pg_ctl -w -o "-h 127.0.0.2 -p $PG_PORT -k /tmp/pg_standby" -D $PGDATA-standby $@ >>$PG_STANDBY_LOG 2>&1
 }
 
 ulimit -c unlimited
@@ -177,18 +178,9 @@ if [ ! -d $PGDATA ]; then
 	$local  all  all                trust
 	host   all  all  127.0.0.1/32  trust
 	host   all  all  ::1/128       trust
+  host   replication replicator 127.0.0.1/32 trust
 	EOF
 
-	if $pg_supports_target_session_attrs; then
-	  cp -a $PGDATA $PGDATA-standby
-
-cat >>$PGDATA-standby/postgresql.conf <<-EOF
-primary_conninfo = 'host=127.0.0.1 port=$PGPORT'
-hot_standby = on
-port = 6665
-EOF
-    pgctl_standby start
-  fi
 fi
 
 pgctl start
@@ -223,6 +215,12 @@ psql -X -p $PG_PORT -d p0 -c "select * from pg_user" | grep pswcheck > /dev/null
 		psql -X -o /dev/null -p $PG_PORT -c "set password_encryption = on; create user puser2 password 'wrong';" p0 || exit 1
 	fi
 }
+
+if $pg_supports_target_session_attrs; then
+	psql -X -o /dev/null -p $PG_PORT -c "create user replicator replication" template1 || exit 1
+  pg_basebackup -U replicator -h 127.0.0.1 -p $PG_PORT -c fast -N -R -D $PGDATA-standby
+ 	pgctl_standby start
+fi
 
 #
 #  fw hacks
@@ -1530,14 +1528,23 @@ test_host_list_dummy() {
 }
 
 test_target_session_primary() {
-	psql -X -d primary_fail -c 'select 1'
-  return 0
+	psql -X -d primary_first -c "select 'primary first'"
+	grep -F 'primary_second/bouncer@127.0.0.2:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG && return 1
+
+  psql -X -d primary_second -c "select 'primary second'"
+	grep -F 'primary_second/bouncer@127.0.0.2:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG || return 1
+
+  psql -X -d primary_fail -c "select 'primary fail'"
+	grep -F 'primary_second/bouncer@127.0.0.2:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG || return 1
+	return 0
 }
 
 test_target_session_standby() {
-  psql -X -d standby_success -c 'select * from pg_database'
-	psql -X -d standby_fail -c 'select 1'
-	grep -F 'standby_fail/bouncer@127.0.0.1:6666 new connection to server' $BOUNCER_LOG || return 1
+  psql -X -d standby_first -c "select 'standby second'"
+	grep -F 'standby_second/bouncer@127.0.0.1:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG && return 1
+
+  psql -X -d standby_second -c "select 'standby second'"
+	grep -F 'standby_second/bouncer@127.0.0.1:6666 closing because: server does not satisfy target_session_attrs' $BOUNCER_LOG || return 1
   return 0
 }
 

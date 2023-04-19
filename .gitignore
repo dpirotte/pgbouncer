@@ -13,6 +13,7 @@
 /test/hba_test
 /test/log
 /test/pgdata/
+/test/pgdata-standby/
 /test/test.log
 /test/test.pid
 /test/ssl/log
