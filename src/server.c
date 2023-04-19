@@ -154,14 +154,14 @@ static bool handle_server_startup(PgSocket *server, PktHdr *pkt)
 			break;
 		}
 
-		/* login ok */
-		slog_debug(server, "server login ok, start accepting queries");
-		server->ready = true;
-
     if (!valid_target_session_attrs(server)) {
 			disconnect_server(server, true, "server does not satisfy target_session_attrs");
       break;
     }
+
+		/* login ok */
+		slog_debug(server, "server login ok, start accepting queries");
+		server->ready = true;
 
 		/* got all params */
 		finish_welcome_msg(server);
