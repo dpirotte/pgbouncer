@@ -475,6 +475,7 @@ class Postgres(QueryRunner):
             # This makes tests run faster and we don't care about crash safety
             # of our test data.
             pgconf.write("fsync = false\n")
+            pgconf.write("wal_level = hot_standby\n")
 
     def pgctl(self, command, **kwargs):
         run(f"pg_ctl -w --pgdata {self.pgdata} {command}", **kwargs)
@@ -486,7 +487,7 @@ class Postgres(QueryRunner):
 
     def start(self):
         try:
-            self.pgctl(f'-o "-p {self.port}" -l {self.log_path} start')
+            self.pgctl(f'-o " -k \'\' -h {self.host} -p {self.port}" -l {self.log_path} start')
         except Exception:
             print("\n\nPG_LOG\n")
             with self.log_path.open() as f:

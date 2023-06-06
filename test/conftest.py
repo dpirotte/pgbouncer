@@ -64,6 +64,7 @@ def pg(tmp_path_factory, cert_dir):
             f.write(f"ssl_key_file='{key}'\n")
 
     pg.nossl_access("all", "trust")
+    pg.nossl_access("replication", "trust")
     pg.nossl_access("p4", "password")
     pg.nossl_access("p5", "md5")
     if PG_SUPPORTS_SCRAM:
