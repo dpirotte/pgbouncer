@@ -477,6 +477,13 @@ class Postgres(QueryRunner):
             pgconf.write("fsync = false\n")
             pgconf.write("wal_level = hot_standby\n")
 
+    def init_from(self, pg):
+        run(
+            f"pg_basebackup --host={pg.host} --port={pg.port} --username=postgres --checkpoint=fast --no-sync --write-recovery-conf --pgdata={self.pgdata}",
+            stdout=subprocess.DEVNULL,
+        )
+
+
     def pgctl(self, command, **kwargs):
         run(f"pg_ctl -w --pgdata {self.pgdata} {command}", **kwargs)
 
