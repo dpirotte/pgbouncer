@@ -428,6 +428,9 @@ pool_mode
 host_strategy
 :   The host_strategy in use if the pool's host contains a comma-separated list.
 
+target_session_attrs
+:   The target_session_attrs setting in use 
+
 #### SHOW PEER_POOLS
 
 A new peer_pool entry is made for each configured peer.
@@ -529,6 +532,9 @@ pool_mode
 
 host_strategy
 :   The database's host_strategy if the host contains a comma-separated list.
+
+target_session_attrs
+:   The database's target_session_attrs if set to a value other than `any`.
 
 max_connections
 :   Maximum number of allowed connections for this database, as set by
