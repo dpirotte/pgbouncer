@@ -879,8 +879,10 @@ static bool admin_show_pools(PgSocket *admin, const char *arg)
 	usec_t max_wait;
 	struct CfValue cv;
 	struct CfValue host_strategy_lookup;
+	struct CfValue target_session_attrs_lookup;
 	int pool_mode;
 	const char *host_strategy_str;
+	const char *target_session_attrs_str;
 
 	cv.extra = pool_mode_map;
 	cv.value_p = &pool_mode;
@@ -890,7 +892,7 @@ static bool admin_show_pools(PgSocket *admin, const char *arg)
 		admin_error(admin, "no mem");
 		return true;
 	}
-	pktbuf_write_RowDescription(buf, "ssiiiiiiiiiiiiiss",
+	pktbuf_write_RowDescription(buf, "ssiiiiiiiiiiiiisss",
 				    "database", "user",
 				    "cl_active", "cl_waiting",
 				    "cl_active_cancel_req",
@@ -902,17 +904,24 @@ static bool admin_show_pools(PgSocket *admin, const char *arg)
 				    "sv_used", "sv_tested",
 				    "sv_login", "maxwait",
 				    "maxwait_us", "pool_mode",
-				    "host_strategy");
+				    "host_strategy", "target_session_attrs");
 	statlist_for_each(item, &pool_list) {
 		pool = container_of(item, PgPool, head);
 		waiter = first_socket(&pool->waiting_client_list);
 		max_wait = (waiter && waiter->query_start) ? now - waiter->query_start : 0;
 		pool_mode = pool_pool_mode(pool);
+
 		host_strategy_str = NULL;
 		host_strategy_lookup.value_p = &pool->db->host_strategy;
 		if (pool->db->host && strchr(pool->db->host, ','))
 			host_strategy_str = cf_get_lookup(&host_strategy_lookup);
-		pktbuf_write_DataRow(buf, "ssiiiiiiiiiiiiiss",
+
+		target_session_attrs_str = NULL;
+		target_session_attrs_lookup.value_p = &pool->db->target_session_attrs;
+		if (pool->db->target_session_attrs != TARGET_SESSION_ANY)
+			target_session_attrs_str = cf_get_lookup(&target_session_attrs_lookup);
+
+		pktbuf_write_DataRow(buf, "ssiiiiiiiiiiiiisss",
 				     pool->db->name, pool->user->name,
 				     statlist_count(&pool->active_client_list),
 				     statlist_count(&pool->waiting_client_list),
@@ -929,7 +938,8 @@ static bool admin_show_pools(PgSocket *admin, const char *arg)
 				     (int)(max_wait / USEC),
 				     (int)(max_wait % USEC),
 				     cf_get_lookup(&cv),
-				     host_strategy_str);
+				     host_strategy_str,
+				     target_session_attrs_str);
 	}
 	admin_flush(admin, buf, "SHOW");
 	return true;

@@ -423,6 +423,8 @@ bool parse_database(void *base, const char *name, const char *connstr)
 			changed = true;
 		} else if (host_strategy != db->host_strategy) {
 			changed = true;
+		} else if (target_session_attrs != db->target_session_attrs) {
+			changed = true;
 		}
 		if (changed)
 			tag_database_dirty(db);
